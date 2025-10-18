@@ -1,0 +1,14 @@
+.vercel
+# Node
+node_modules
+npm-debug.log
+dist
+.DS_Store
+.vercel
+.env
+.env.local
+.env.production
+.env.development
+
+# Vite
+client/dist

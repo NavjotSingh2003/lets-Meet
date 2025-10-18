@@ -6,22 +6,24 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    origin: 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-    credentials: true
-  },
-  allowEIO3: true
-});
-
 app.use(cors());
 
+// ✅ Initialize Socket.IO once (no duplicate)
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173",  // frontend (Vite)
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ["websocket", "polling"]
+});
+
+// ✅ Simple status route
 app.get('/api/status', (req, res) => {
   res.send({ status: '✅ Server is live' });
 });
 
-// Store room members and usernames
+// ✅ Room management
 const roomMembers = {};
 const socketUsernames = {};
 
@@ -32,29 +34,23 @@ io.on('connection', (socket) => {
     console.log(`Client ${socket.id} upgraded transport to: ${socket.conn.transport.name}`);
   });
 
+  // Join Room
   socket.on('join-room', ({ roomId, username }) => {
     socket.join(roomId);
     console.log(`📢 ${socket.id} (${username}) joined room ${roomId}`);
 
-    // Save username
     socketUsernames[socket.id] = username;
 
-    if (!roomMembers[roomId]) {
-      roomMembers[roomId] = [];
-    }
-
+    if (!roomMembers[roomId]) roomMembers[roomId] = [];
     roomMembers[roomId].push(socket.id);
 
-    // Notify others in room
     socket.to(roomId).emit('user-joined', { id: socket.id, name: username });
-
-    // Update participant count
     io.to(roomId).emit('room-participants', roomMembers[roomId].length);
 
-    // Log current members
     console.log(`👥 Room ${roomId} members:`, roomMembers[roomId]);
   });
 
+  // Chat Message
   socket.on('chat-message', ({ roomId, message, senderName }) => {
     io.to(roomId).emit('chat-message', {
       message,
@@ -63,6 +59,7 @@ io.on('connection', (socket) => {
     });
   });
 
+  // WebRTC Signaling
   socket.on('signal', ({ roomId, signal, to }) => {
     console.log(`📤 ${socket.id} signaling ${to} in room ${roomId}`);
     io.to(to).emit('signal', {
@@ -70,18 +67,20 @@ io.on('connection', (socket) => {
       signal,
     });
   });
-socket.on('typing', ({ roomId }) => {
-  socket.to(roomId).emit('typing', { senderId: socket.id });
-});
 
-socket.on('stop-typing', ({ roomId }) => {
-  socket.to(roomId).emit('stop-typing');
-});
+  // Typing indicators
+  socket.on('typing', ({ roomId }) => {
+    socket.to(roomId).emit('typing', { senderId: socket.id });
+  });
 
+  socket.on('stop-typing', ({ roomId }) => {
+    socket.to(roomId).emit('stop-typing');
+  });
+
+  // Disconnect logic
   socket.on('disconnect', () => {
     console.log('🔴 Client disconnected:', socket.id);
 
-    // Remove from room members
     for (const roomId in roomMembers) {
       roomMembers[roomId] = roomMembers[roomId].filter(id => id !== socket.id);
       socket.to(roomId).emit('user-disconnected', socket.id);
@@ -97,7 +96,8 @@ socket.on('stop-typing', ({ roomId }) => {
   });
 });
 
-const PORT = 5000;
+// ✅ Server start
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
